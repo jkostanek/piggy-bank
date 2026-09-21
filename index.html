@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Piggy Bank Ledger</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');
+
+  :root{
+    color-scheme: light;
+    --paper:#FFF9EE;
+    --ink:#3A2E2A;
+    --ink-soft:#8A7A6E;
+    --line:#F0E2CC;
+    --card-line:#EADFC8;
+
+    --spend:#E8703A;
+    --spend-bg:#FFE7D6;
+    --spend-deep:#C4531F;
+
+    --goal:#8B5FBF;
+    --goal-bg:#EEE2FA;
+    --goal-deep:#6B3FA0;
+
+    --forever:#1F9E7C;
+    --forever-bg:#D8F5EA;
+    --forever-deep:#0F7A5D;
+
+    --neg:#D6425B;
+    --card-radius:18px;
+
+    --kidblue:#3E7BC4;
+  }
+  *{box-sizing:border-box;}
+  html,body{color-scheme:light;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 8% 0%, #FFE9C7 0%, transparent 45%),
+      radial-gradient(circle at 100% 10%, #E4F5EE 0%, transparent 40%),
+      var(--paper);
+    color:var(--ink);
+    font-family:'Nunito',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:24px 18px 90px;}
+
+  header{display:flex;align-items:center;gap:12px;margin-bottom:22px;}
+  .piggy-emoji{font-size:34px;line-height:1;}
+  header .titles{flex:1;}
+  header h1{
+    font-family:'Baloo 2',sans-serif;
+    font-size:26px;
+    font-weight:800;
+    margin:0;
+    color:var(--ink);
+    letter-spacing:-0.01em;
+  }
+  header .date{font-size:12.5px;color:var(--ink-soft);font-weight:600;}
+  #status.err-status{color:var(--neg);}
+
+  .kidtabs{display:flex;gap:10px;margin-bottom:20px;}
+  .kidtab{
+    flex:1;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:12px 10px;
+    border:none;
+    border-radius:16px;
+    background:#fff;
+    box-shadow:0 2px 0 var(--card-line);
+    font-family:'Baloo 2',sans-serif;
+    font-size:17px;
+    font-weight:700;
+    cursor:pointer;
+    color:var(--ink-soft);
+    transition:transform .1s, box-shadow .15s, color .15s;
+  }
+  .kidtab .dot{width:10px;height:10px;border-radius:50%;background:var(--line);}
+  .kidtab.active{color:#fff;transform:translateY(-1px);background:var(--kc);box-shadow:0 3px 0 var(--kc-deep);}
+  .kidtab.active .dot{background:#fff;}
+
+  .accounts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:22px;}
+  .acct{border-radius:var(--card-radius);padding:16px 10px;text-align:center;box-shadow:0 2px 0 rgba(0,0,0,0.04);}
+  .acct .icon{font-size:22px;display:block;margin-bottom:4px;}
+  .acct .label{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;opacity:.8;font-family:'Nunito',sans-serif;}
+  .acct .amt{font-family:'Baloo 2',sans-serif;font-size:21px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;}
+  .acct.spend{background:var(--spend-bg);color:var(--spend-deep);}
+  .acct.goal{background:var(--goal-bg);color:var(--goal-deep);}
+  .acct.forever{background:var(--forever-bg);color:var(--forever-deep);}
+  .acct .amt.neg{color:var(--neg);}
+
+  .actions{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;}
+  button.act{
+    flex:1;
+    min-width:130px;
+    padding:13px 14px;
+    border-radius:14px;
+    border:none;
+    background:linear-gradient(180deg,#FFCB57,#F5AD1E);
+    box-shadow:0 3px 0 #C6820D;
+    color:#4A2E00;
+    font-family:'Baloo 2',sans-serif;
+    font-size:15px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  button.act.secondary{background:#fff;color:var(--ink);box-shadow:0 2px 0 var(--card-line);}
+  button.act:active{transform:translateY(2px);box-shadow:none;}
+
+  .ledger h2{font-family:'Baloo 2',sans-serif;font-size:18px;margin:0 0 10px;font-weight:700;color:var(--ink);}
+  .ledger-card{background:#fff;border-radius:var(--card-radius);padding:6px 4px;box-shadow:0 2px 0 rgba(0,0,0,0.04);overflow:hidden;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);border-bottom:2px solid var(--line);padding:10px 10px 8px;font-weight:800;}
+  td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink);}
+  tr:last-child td{border-bottom:none;}
+  td.amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700;}
+  td.amt.neg{color:var(--neg);}
+  td.amt.pos{color:var(--forever-deep);}
+  .acct-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800;}
+  .acct-pill.spend{background:var(--spend-bg);color:var(--spend-deep);}
+  .acct-pill.goal{background:var(--goal-bg);color:var(--goal-deep);}
+  .acct-pill.forever{background:var(--forever-bg);color:var(--forever-deep);}
+  .empty{color:var(--ink-soft);font-size:13px;padding:24px 8px;text-align:center;font-weight:600;}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(58,46,42,.5);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10;}
+  .modal{background:var(--paper);border-radius:20px;padding:24px;width:100%;max-width:360px;box-shadow:0 10px 0 rgba(58,46,42,0.08);}
+  .modal h3{font-family:'Baloo 2',sans-serif;margin:0 0 14px;font-size:20px;color:var(--ink);}
+  .modal label{display:block;font-size:12px;font-weight:800;color:var(--ink-soft);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.03em;}
+  .modal input,.modal select{
+    width:100%;padding:11px;border-radius:10px;border:1.5px solid var(--card-line);
+    font-size:15px;background:#fff;color:var(--ink);font-family:'Nunito',inherit;
+  }
+  .modal .row{display:flex;gap:8px;margin-top:20px;}
+  .modal .row button{flex:1;padding:12px;border-radius:12px;border:none;font-weight:700;font-size:14px;cursor:pointer;font-family:'Baloo 2',sans-serif;}
+  .modal .row button.cancel{background:#fff;border:1.5px solid var(--card-line);color:var(--ink);}
+  .modal .row button.confirm{background:linear-gradient(180deg,#FFCB57,#F5AD1E);color:#4A2E00;box-shadow:0 3px 0 #C6820D;}
+  .modal .row button.confirm:active{transform:translateY(2px);box-shadow:none;}
+  .err{color:var(--neg);font-size:12.5px;margin-top:8px;min-height:16px;font-weight:700;}
+  .hint{font-size:12.5px;color:var(--ink-soft);margin-top:6px;font-weight:600;}
+
+  .radiogroup{display:flex;gap:8px;margin-top:2px;}
+  .radiogroup label{
+    flex:1;text-transform:none;font-weight:700;letter-spacing:0;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1.5px solid var(--card-line);border-radius:10px;padding:10px 6px;cursor:pointer;font-size:13px;color:var(--ink);
+    margin:0;background:#fff;font-family:'Nunito',sans-serif;
+  }
+  .radiogroup input{width:auto;}
+  .radiogroup label.checked{border-color:var(--spend);background:var(--spend-bg);color:var(--spend-deep);}
+
+  footer{margin-top:30px;font-size:11.5px;color:var(--ink-soft);text-align:center;font-weight:600;}
+  footer button{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font:inherit;cursor:pointer;padding:0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="piggy-emoji">🐷</div>
+    <div class="titles">
+      <h1>Piggy Bank Ledger</h1>
+      <div class="date"><span id="today"></span> <span id="status"></span></div>
+    </div>
+  </header>
+
+  <div class="kidtabs" id="kidtabs"></div>
+
+  <div class="accounts" id="accounts"></div>
+
+  <div class="actions">
+    <button class="act" id="btnAllowance">🎁 Give Allowance</button>
+    <button class="act" id="btnDeposit">💰 Add Deposit</button>
+    <button class="act secondary" id="btnSpend">🛍️ Log Spend</button>
+    <button class="act secondary" id="btnEditAllowance">⚙️ Edit Allowance</button>
+    <button class="act secondary" id="btnRestore">🕐 Restore Backup</button>
+    <button class="act secondary" id="btnExport">📋 Export Data</button>
+  </div>
+
+  <div class="ledger">
+    <h2>History</h2>
+    <div class="ledger-card">
+      <table>
+        <thead><tr><th>Date</th><th>What</th><th>Account</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead>
+        <tbody id="ledgerBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty" style="display:none;">No transactions yet.</div>
+    </div>
+  </div>
+
+  <footer>Refresh to see changes made on other devices. <button id="btnDisconnect">Disconnect this device</button></footer>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+const DATA_REPO = 'jkostanek/piggy-bank-data';
+const TOKEN_KEY = 'piggy:token';
+const ACCOUNTS = ['spend','goal','forever'];
+const ACCT_LABEL = {spend:'Spend', goal:'Goal', forever:'Forever'};
+const ACCT_ICON = {spend:'💵', goal:'🎯', forever:'🌱'};
+
+let token = null;
+try{ token = localStorage.getItem(TOKEN_KEY); }catch(e){}
+let settings = null;   // {pin, kids:[{id,name,color,colorDeep}]} from settings.json
+let state = {};
+let shas = {};
+let activeKid = null;
+let busy = false;
+
+function fmt(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toFixed(2);
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function round2(n){ return Math.round(n*100)/100; }
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function kidName(id){ return settings.kids.find(k=>k.id===id).name; }
+
+function setStatus(text, isErr){
+  const el = document.getElementById('status');
+  el.textContent = text ? '· ' + text : '';
+  el.className = isErr ? 'err-status' : '';
+}
+
+// ---- GitHub contents API ----
+function b64decode(s){
+  const bin = atob(s.replace(/\n/g,''));
+  return new TextDecoder().decode(Uint8Array.from(bin, c=>c.charCodeAt(0)));
+}
+function b64encode(str){
+  let bin = '';
+  new TextEncoder().encode(str).forEach(b=> bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+async function gh(path, opts={}){
+  const res = await fetch('https://api.github.com/repos/'+DATA_REPO+'/'+path, {
+    ...opts,
+    cache:'no-store',
+    headers:{ Authorization:'Bearer '+token, Accept:'application/vnd.github+json' }
+  });
+  if(!res.ok){
+    const e = new Error('GitHub API '+res.status);
+    e.status = res.status;
+    throw e;
+  }
+  return res.json();
+}
+async function readFile(path, ref){
+  const j = await gh('contents/'+path + (ref ? '?ref='+ref : ''));
+  return { data: JSON.parse(b64decode(j.content)), sha: j.sha };
+}
+async function writeFile(path, data, sha, message){
+  const j = await gh('contents/'+path, {
+    method:'PUT',
+    body: JSON.stringify({ message, sha, content: b64encode(JSON.stringify(data, null, 2) + '\n') })
+  });
+  return j.content.sha;
+}
+
+// ---- load / save ----
+function pruneOld(data){
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - 3);
+  const before = data.transactions.length;
+  data.transactions = data.transactions.filter(t => new Date(t.date) >= cutoff);
+  return data.transactions.length !== before;
+}
+
+async function loadKid(kid){
+  const r = await readFile(kid+'.json');
+  state[kid] = r.data;
+  shas[kid] = r.sha;
+}
+
+async function loadAll(){
+  render();
+  if(!token){ showConnectModal(); return; }
+  setStatus('Loading…');
+  try{
+    settings = (await readFile('settings.json')).data;
+    for(const k of settings.kids){
+      await loadKid(k.id);
+      const pruned = clone(state[k.id]);
+      if(pruneOld(pruned)) await save(k.id, pruned, 'Prune history older than 3 months');
+    }
+    setStatus('');
+  }catch(e){
+    console.error('Load failed', e);
+    settings = null;
+    if(e.status === 401 || e.status === 403 || e.status === 404){
+      showConnectModal('Could not open the ledger (HTTP '+e.status+'). Check the token.');
+    } else {
+      setStatus('Could not load the ledger. Refresh to retry.', true);
+    }
+  }
+  render();
+}
+
+// Writes next state for one kid as a single commit. State only changes on success;
+// a sha mismatch means another device saved first, so reload instead of overwriting.
+async function save(kid, next, summary){
+  busy = true; render();
+  setStatus('Saving…');
+  try{
+    shas[kid] = await writeFile(kid+'.json', next, shas[kid], kidName(kid)+': '+summary);
+    state[kid] = next;
+    setStatus('Saved');
+  }catch(e){
+    console.error('Save failed', e);
+    if(e.status === 409 || e.status === 422){
+      try{ await loadKid(kid); }catch(e2){ console.error('Reload failed', e2); }
+      setStatus('Another device changed this ledger first. Reloaded; nothing was saved, please redo.', true);
+    } else {
+      setStatus('Save failed (HTTP '+(e.status||'network')+'). Nothing was changed.', true);
+    }
+  }
+  busy = false; render();
+}
+
+async function applyTxn(kid, entries, type, memo){
+  const next = clone(state[kid]);
+  const gid = entries.length > 1 ? uid() : null;
+  entries.forEach(({account, amount}) => {
+    next.balances[account] = round2(next.balances[account] + amount);
+    next.transactions.push({
+      id: uid(), groupId: gid, date: new Date().toISOString(),
+      type, account, amount: round2(amount), memo: memo||'', balanceAfter: next.balances[account]
+    });
+  });
+  const total = round2(entries.reduce((s,e)=> s + e.amount, 0));
+  const where = entries.length > 1 ? '' : ' ('+ACCT_LABEL[entries[0].account]+')';
+  await save(kid, next, (memo||type) + ' ' + (total<0?'-':'+') + fmt(Math.abs(total)) + where);
+}
+
+// ---- render ----
+function render(){
+  document.getElementById('today').textContent = new Date().toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+
+  const tabs = document.getElementById('kidtabs');
+  tabs.innerHTML = '';
+  (settings ? settings.kids : []).forEach(k=>{
+    const b = document.createElement('button');
+    b.className = 'kidtab' + (k.id===activeKid?' active':'');
+    b.style.setProperty('--kc', k.color);
+    b.style.setProperty('--kc-deep', k.colorDeep);
+    b.innerHTML = `<span class="dot"></span>${k.name}`;
+    b.onclick = ()=>{ activeKid = k.id; render(); };
+    tabs.appendChild(b);
+  });
+
+  const actionButtons = ['btnAllowance','btnDeposit','btnSpend','btnEditAllowance','btnRestore'].map(id=>document.getElementById(id));
+  const exportBtn = document.getElementById('btnExport');
+  exportBtn.disabled = !settings;
+  exportBtn.style.opacity = settings ? '1' : '0.5';
+  document.getElementById('btnDisconnect').style.display = token ? 'inline' : 'none';
+
+  if(!settings || !activeKid){
+    document.getElementById('accounts').innerHTML = settings
+      ? `<div class="empty" style="grid-column:1/-1;">Pick a kid above to see their balances.</div>`
+      : `<div class="empty" style="grid-column:1/-1;">This device isn't connected to the ledger. <button class="act secondary" id="btnConnect" style="display:block;margin:12px auto 0;flex:none;">🔑 Connect</button></div>`;
+    const c = document.getElementById('btnConnect');
+    if(c) c.onclick = ()=> showConnectModal();
+    document.getElementById('ledgerBody').innerHTML = '';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').textContent = settings ? 'Pick a kid to see their history.' : '';
+    actionButtons.forEach(b=> { b.disabled = true; b.style.opacity = '0.5'; });
+    return;
+  }
+  actionButtons.forEach(b=> { b.disabled = busy; b.style.opacity = busy ? '0.5' : '1'; });
+
+  const kidState = state[activeKid];
+  const accWrap = document.getElementById('accounts');
+  accWrap.innerHTML = '';
+  ACCOUNTS.forEach(a=>{
+    const val = kidState.balances[a];
+    const div = document.createElement('div');
+    div.className = 'acct ' + a;
+    div.innerHTML = `<span class="icon">${ACCT_ICON[a]}</span><div class="label">${ACCT_LABEL[a]}</div><div class="amt${val<0?' neg':''}">${fmt(val)}</div>`;
+    accWrap.appendChild(div);
+  });
+
+  const body = document.getElementById('ledgerBody');
+  body.innerHTML = '';
+  const txns = [...kidState.transactions].reverse();
+  document.getElementById('emptyState').style.display = txns.length? 'none':'block';
+  document.getElementById('emptyState').textContent = 'No transactions yet.';
+  txns.forEach(t=>{
+    const tr = document.createElement('tr');
+    const d = new Date(t.date).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    tr.innerHTML = `
+      <td>${d}</td>
+      <td>${t.memo || (t.type[0].toUpperCase()+t.type.slice(1))}</td>
+      <td><span class="acct-pill ${t.account}">${ACCT_LABEL[t.account]}</span></td>
+      <td class="amt ${t.amount<0?'neg':'pos'}">${t.amount<0?'-':'+'}${fmt(Math.abs(t.amount)).slice(1)}</td>
+      <td class="amt">${fmt(t.balanceAfter)}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+// ---- modals ----
+function showConnectModal(errMsg){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay">
+      <div class="modal">
+        <h3>🔑 Connect this device</h3>
+        <p class="hint">Paste a GitHub fine-grained token with read/write access to the contents of ${DATA_REPO}. It is saved only in this browser.</p>
+        <input type="password" id="tokInput" placeholder="github_pat_…" autocomplete="off">
+        <div class="err" id="tokErr">${errMsg||''}</div>
+        <div class="row">
+          <button class="cancel">Cancel</button>
+          <button class="confirm">Connect</button>
+        </div>
+      </div>
+    </div>`;
+  const overlay = root.querySelector('.overlay');
+  const input = root.querySelector('#tokInput');
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  overlay.onclick = (e)=>{ if(e.target===overlay) root.innerHTML=''; };
+  const submit = ()=>{
+    const v = input.value.trim();
+    if(!v){ root.querySelector('#tokErr').textContent = 'Paste a token.'; return; }
+    token = v;
+    try{ localStorage.setItem(TOKEN_KEY, v); }catch(e){ console.error('Could not remember token', e); }
+    root.innerHTML = '';
+    loadAll();
+  };
+  root.querySelector('.confirm').onclick = submit;
+  input.onkeydown = (e)=>{ if(e.key==='Enter') submit(); };
+  setTimeout(()=>input.focus(),50);
+}
+
+function askPin(onOk){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay">
+      <div class="modal">
+        <h3>🔒 Parent PIN</h3>
+        <input type="password" inputmode="numeric" id="pinInput" placeholder="Enter PIN" autofocus>
+        <div class="err" id="pinErr"></div>
+        <div class="row">
+          <button class="cancel">Cancel</button>
+          <button class="confirm">Continue</button>
+        </div>
+      </div>
+    </div>`;
+  const overlay = root.querySelector('.overlay');
+  const input = root.querySelector('#pinInput');
+  const err = root.querySelector('#pinErr');
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  overlay.onclick = (e)=>{ if(e.target===overlay) root.innerHTML=''; };
+  const submit = ()=>{
+    if(input.value === String(settings.pin)){ root.innerHTML=''; onOk(); }
+    else { err.textContent = 'Incorrect PIN.'; input.value=''; input.focus(); }
+  };
+  root.querySelector('.confirm').onclick = submit;
+  input.onkeydown = (e)=>{ if(e.key==='Enter') submit(); };
+  setTimeout(()=>input.focus(),50);
+}
+
+function showAllowanceModal(){
+  const kid = activeKid;
+  const cfg = state[kid].config;
+  const root = document.getElementById('modalRoot');
+  const total = cfg.allowance;
+  const parts = cfg.ratio.map(r => round2(total * r / cfg.ratio.reduce((a,b)=>a+b,0)));
+  root.innerHTML = `
+    <div class="overlay"><div class="modal">
+      <h3>🎁 Give Allowance — ${kidName(kid)}</h3>
+      <p class="hint">Total ${fmt(total)}, split ${cfg.ratio.join(':')} → Spend ${fmt(parts[0])}, Goal ${fmt(parts[1])}, Forever ${fmt(parts[2])}.</p>
+      <div class="row">
+        <button class="cancel">Cancel</button>
+        <button class="confirm">Give Allowance</button>
+      </div>
+    </div></div>`;
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelector('.confirm').onclick = async ()=>{
+    root.innerHTML='';
+    await applyTxn(kid, [
+      {account:'spend', amount:parts[0]},
+      {account:'goal', amount:parts[1]},
+      {account:'forever', amount:parts[2]}
+    ], 'allowance', 'Allowance');
+  };
+}
+
+function showDepositModal(){
+  const kid = activeKid;
+  const cfg = state[kid].config;
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay"><div class="modal">
+      <h3>💰 Add Deposit — ${kidName(kid)}</h3>
+      <label>Deposit type</label>
+      <div class="radiogroup">
+        <label class="checked"><input type="radio" name="dtype" value="distributed" checked> Distributed</label>
+        <label><input type="radio" name="dtype" value="individual"> Individual</label>
+      </div>
+      <label>Amount</label>
+      <input type="number" step="0.01" id="depAmt" placeholder="0.00">
+      <div id="acctPicker" style="display:none;">
+        <label>Account</label>
+        <select id="depAcct">
+          <option value="spend">Spend</option>
+          <option value="goal">Goal</option>
+          <option value="forever">Forever</option>
+        </select>
+      </div>
+      <p class="hint" id="splitHint">Split ${cfg.ratio.join(':')} across Spend / Goal / Forever.</p>
+      <label>Memo (optional)</label>
+      <input type="text" id="depMemo" placeholder="e.g. Mowed the lawn">
+      <div class="err" id="depErr"></div>
+      <div class="row">
+        <button class="cancel">Cancel</button>
+        <button class="confirm">Add Deposit</button>
+      </div>
+    </div></div>`;
+
+  const radios = root.querySelectorAll('input[name="dtype"]');
+  radios.forEach(r=> r.onchange = ()=>{
+    root.querySelectorAll('.radiogroup label').forEach(l=>l.classList.remove('checked'));
+    r.closest('label').classList.add('checked');
+    const isIndividual = r.value === 'individual';
+    root.querySelector('#acctPicker').style.display = isIndividual ? 'block':'none';
+    root.querySelector('#splitHint').style.display = isIndividual ? 'none':'block';
+  });
+
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelector('.confirm').onclick = async ()=>{
+    const amt = parseFloat(root.querySelector('#depAmt').value);
+    const memo = root.querySelector('#depMemo').value.trim();
+    const type = root.querySelector('input[name="dtype"]:checked').value;
+    const acct = root.querySelector('#depAcct').value;
+    const err = root.querySelector('#depErr');
+    if(isNaN(amt) || amt <= 0){ err.textContent = 'Enter an amount greater than 0.'; return; }
+    root.innerHTML='';
+    if(type === 'distributed'){
+      const sum = cfg.ratio.reduce((a,b)=>a+b,0);
+      const parts = cfg.ratio.map(r=> round2(amt * r / sum));
+      await applyTxn(kid, [
+        {account:'spend', amount:parts[0]},
+        {account:'goal', amount:parts[1]},
+        {account:'forever', amount:parts[2]}
+      ], 'deposit', memo||'Deposit');
+    } else {
+      await applyTxn(kid, [{account:acct, amount:amt}], 'deposit', memo||'Deposit');
+    }
+  };
+}
+
+function showSpendModal(){
+  const kid = activeKid;
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay"><div class="modal">
+      <h3>🛍️ Log Spend — ${kidName(kid)}</h3>
+      <label>Amount</label>
+      <input type="number" step="0.01" id="spAmt" placeholder="0.00">
+      <label>Account</label>
+      <select id="spAcct">
+        <option value="spend">Spend</option>
+        <option value="goal">Goal</option>
+        <option value="forever">Forever</option>
+      </select>
+      <label>Memo (optional)</label>
+      <input type="text" id="spMemo" placeholder="e.g. Lego set">
+      <p class="hint">Negative balances are allowed.</p>
+      <div class="err" id="spErr"></div>
+      <div class="row">
+        <button class="cancel">Cancel</button>
+        <button class="confirm">Log Spend</button>
+      </div>
+    </div></div>`;
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelector('.confirm').onclick = async ()=>{
+    const amt = parseFloat(root.querySelector('#spAmt').value);
+    const memo = root.querySelector('#spMemo').value.trim();
+    const acct = root.querySelector('#spAcct').value;
+    const err = root.querySelector('#spErr');
+    if(isNaN(amt) || amt <= 0){ err.textContent = 'Enter an amount greater than 0.'; return; }
+    root.innerHTML='';
+    await applyTxn(kid, [{account:acct, amount:-amt}], 'spend', memo||'Spend');
+  };
+}
+
+function showEditAllowanceModal(){
+  const kid = activeKid;
+  const cfg = state[kid].config;
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay"><div class="modal">
+      <h3>⚙️ Edit Allowance — ${kidName(kid)}</h3>
+      <label>Weekly amount</label>
+      <input type="number" step="0.01" id="allAmt" value="${cfg.allowance}">
+      <label>Split ratio (Spend : Goal : Forever)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" step="1" id="r1" value="${cfg.ratio[0]}">
+        <input type="number" step="1" id="r2" value="${cfg.ratio[1]}">
+        <input type="number" step="1" id="r3" value="${cfg.ratio[2]}">
+      </div>
+      <div class="err" id="allErr"></div>
+      <div class="row">
+        <button class="cancel">Cancel</button>
+        <button class="confirm">Save</button>
+      </div>
+    </div></div>`;
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelector('.confirm').onclick = async ()=>{
+    const amt = parseFloat(root.querySelector('#allAmt').value);
+    const r1 = parseFloat(root.querySelector('#r1').value);
+    const r2 = parseFloat(root.querySelector('#r2').value);
+    const r3 = parseFloat(root.querySelector('#r3').value);
+    const err = root.querySelector('#allErr');
+    if(isNaN(amt) || amt<=0 || [r1,r2,r3].some(v=>isNaN(v) || v<0)){
+      err.textContent = 'Enter valid, non-negative numbers.'; return;
+    }
+    root.innerHTML='';
+    const next = clone(state[kid]);
+    next.config.allowance = round2(amt);
+    next.config.ratio = [r1,r2,r3];
+    await save(kid, next, 'Allowance set to '+fmt(next.config.allowance)+', split '+next.config.ratio.join(':'));
+  };
+}
+
+// Each save is a commit, so earlier versions of <kid>.json are the backups.
+async function showRestoreModal(){
+  const kid = activeKid;
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `<div class="overlay"><div class="modal"><h3>🕐 Restore Backup — ${kidName(kid)}</h3><p class="hint">Loading history…</p></div></div>`;
+  let list = [];
+  try{
+    const commits = (await gh('commits?path='+kid+'.json&per_page=11')).slice(1);
+    for(const c of commits){
+      list.push({ ts: c.commit.author.date, msg: c.commit.message, data: (await readFile(kid+'.json', c.sha)).data });
+    }
+  }catch(e){
+    console.error('Could not load history', e);
+    root.innerHTML = `<div class="overlay"><div class="modal">
+      <h3>🕐 Restore Backup — ${kidName(kid)}</h3>
+      <p class="err">Could not load history (HTTP ${e.status||'network'}).</p>
+      <div class="row"><button class="cancel" style="flex:1">Close</button></div>
+    </div></div>`;
+    root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+    return;
+  }
+  if(!list.length){
+    root.innerHTML = `<div class="overlay"><div class="modal">
+      <h3>🕐 Restore Backup — ${kidName(kid)}</h3>
+      <p class="hint">No earlier versions yet — every change is saved as a new version.</p>
+      <div class="row"><button class="cancel" style="flex:1">Close</button></div>
+    </div></div>`;
+    root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+    root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+    return;
+  }
+  const rows = list.map((b,idx)=>{
+    const dt = new Date(b.ts).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const bal = b.data.balances;
+    return `<div style="border:1.5px solid var(--card-line);border-radius:10px;padding:10px;margin-bottom:8px;">
+      <div style="font-weight:800;font-size:13.5px;">${dt}</div>
+      <div class="hint" style="margin:2px 0 0;">After: ${b.msg}</div>
+      <div class="hint" style="margin:4px 0 8px;">Spend ${fmt(bal.spend)} · Goal ${fmt(bal.goal)} · Forever ${fmt(bal.forever)}</div>
+      <button class="restore-pick" data-idx="${idx}" style="width:100%;padding:8px;border-radius:8px;border:none;background:var(--kidblue);color:#fff;font-weight:700;font-family:'Baloo 2',sans-serif;cursor:pointer;">Restore this</button>
+    </div>`;
+  }).join('');
+  root.innerHTML = `<div class="overlay"><div class="modal" style="max-height:80vh;overflow-y:auto;">
+    <h3>🕐 Restore Backup — ${kidName(kid)}</h3>
+    <p class="hint">Most recent first. Restoring replaces current balances and history for ${kidName(kid)}; the current version stays in the history.</p>
+    ${rows}
+    <div class="row"><button class="cancel" style="flex:1">Cancel</button></div>
+  </div></div>`;
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelectorAll('.restore-pick').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const chosen = list[parseInt(btn.dataset.idx, 10)];
+      root.innerHTML = '';
+      await save(kid, chosen.data, 'Restore version from '+chosen.ts);
+    };
+  });
+}
+
+function showExportModal(){
+  const exportObj = {};
+  settings.kids.forEach(k => exportObj[k.id] = state[k.id]);
+  const text = JSON.stringify(exportObj, null, 2);
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `<div class="overlay"><div class="modal">
+    <h3>📋 Export All Data</h3>
+    <p class="hint">All balances and history. Copy this and paste it somewhere safe (Notes, your Google Sheet, etc).</p>
+    <textarea id="exportText" readonly style="width:100%;height:220px;margin-top:10px;padding:10px;border-radius:10px;border:1.5px solid var(--card-line);font-family:monospace;font-size:11.5px;background:#fff;color:var(--ink);">${text}</textarea>
+    <div class="err" id="exportMsg"></div>
+    <div class="row">
+      <button class="cancel">Close</button>
+      <button class="confirm" id="copyBtn">Copy</button>
+    </div>
+  </div></div>`;
+  const ta = root.querySelector('#exportText');
+  ta.onclick = ()=> ta.select();
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelector('#copyBtn').onclick = async ()=>{
+    const msg = root.querySelector('#exportMsg');
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try{
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }catch(e){
+      try{ ok = document.execCommand('copy'); }
+      catch(e2){ ok = false; }
+    }
+    if(ok){
+      msg.style.color = 'var(--forever-deep)';
+      msg.textContent = 'Copied!';
+    } else {
+      msg.style.color = 'var(--ink-soft)';
+      msg.textContent = 'Text is selected — press Cmd/Ctrl+C (or long-press → Copy).';
+    }
+  };
+}
+
+document.getElementById('btnAllowance').onclick = ()=> { if(activeKid) askPin(showAllowanceModal); };
+document.getElementById('btnDeposit').onclick = ()=> { if(activeKid) askPin(showDepositModal); };
+document.getElementById('btnSpend').onclick = ()=> { if(activeKid) askPin(showSpendModal); };
+document.getElementById('btnEditAllowance').onclick = ()=> { if(activeKid) askPin(showEditAllowanceModal); };
+document.getElementById('btnRestore').onclick = ()=> { if(activeKid) askPin(showRestoreModal); };
+document.getElementById('btnExport').onclick = ()=> { if(settings) showExportModal(); };
+document.getElementById('btnDisconnect').onclick = ()=>{
+  try{ localStorage.removeItem(TOKEN_KEY); }catch(e){}
+  token = null; settings = null; state = {}; shas = {}; activeKid = null;
+  loadAll();
+};
+
+loadAll();
+</script>
+</body>
+</html>
