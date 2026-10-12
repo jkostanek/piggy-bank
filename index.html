@@ -172,6 +172,7 @@
     <button class="act" id="btnAllowance">🎁 Give Allowance</button>
     <button class="act" id="btnDeposit">💰 Add Deposit</button>
     <button class="act secondary" id="btnSpend">🛍️ Log Spend</button>
+    <button class="act secondary" id="btnTransfer">🔄 Transfer</button>
     <button class="act secondary" id="btnEditAllowance">⚙️ Edit Allowance</button>
     <button class="act secondary" id="btnRestore">🕐 Restore Backup</button>
     <button class="act secondary" id="btnExport">📋 Export Data</button>
@@ -202,7 +203,7 @@ const ACCT_ICON = {spend:'💵', goal:'🎯', forever:'🌱'};
 
 let token = null;
 try{ token = localStorage.getItem(TOKEN_KEY); }catch(e){}
-let settings = null;   // {pin, kids:[{id,name,color,colorDeep}]} from settings.json
+let settings = null;   // {kids:[{id,name,color,colorDeep}]} from settings.json
 let state = {};
 let shas = {};
 let activeKid = null;
@@ -259,14 +260,6 @@ async function writeFile(path, data, sha, message){
 }
 
 // ---- load / save ----
-function pruneOld(data){
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 3);
-  const before = data.transactions.length;
-  data.transactions = data.transactions.filter(t => new Date(t.date) >= cutoff);
-  return data.transactions.length !== before;
-}
-
 async function loadKid(kid){
   const r = await readFile(kid+'.json');
   state[kid] = r.data;
@@ -281,8 +274,6 @@ async function loadAll(){
     settings = (await readFile('settings.json')).data;
     for(const k of settings.kids){
       await loadKid(k.id);
-      const pruned = clone(state[k.id]);
-      if(pruneOld(pruned)) await save(k.id, pruned, 'Prune history older than 3 months');
     }
     setStatus('');
   }catch(e){
@@ -318,7 +309,7 @@ async function save(kid, next, summary){
   busy = false; render();
 }
 
-async function applyTxn(kid, entries, type, memo){
+async function applyTxn(kid, entries, type, memo, summary){
   const next = clone(state[kid]);
   const gid = entries.length > 1 ? uid() : null;
   entries.forEach(({account, amount}) => {
@@ -330,7 +321,7 @@ async function applyTxn(kid, entries, type, memo){
   });
   const total = round2(entries.reduce((s,e)=> s + e.amount, 0));
   const where = entries.length > 1 ? '' : ' ('+ACCT_LABEL[entries[0].account]+')';
-  await save(kid, next, (memo||type) + ' ' + (total<0?'-':'+') + fmt(Math.abs(total)) + where);
+  await save(kid, next, summary || ((memo||type) + ' ' + (total<0?'-':'+') + fmt(Math.abs(total)) + where));
 }
 
 // ---- render ----
@@ -349,7 +340,7 @@ function render(){
     tabs.appendChild(b);
   });
 
-  const actionButtons = ['btnAllowance','btnDeposit','btnSpend','btnEditAllowance','btnRestore'].map(id=>document.getElementById(id));
+  const actionButtons = ['btnAllowance','btnDeposit','btnSpend','btnTransfer','btnEditAllowance','btnRestore'].map(id=>document.getElementById(id));
   const exportBtn = document.getElementById('btnExport');
   exportBtn.disabled = !settings;
   exportBtn.style.opacity = settings ? '1' : '0.5';
@@ -426,34 +417,6 @@ function showConnectModal(errMsg){
     try{ localStorage.setItem(TOKEN_KEY, v); }catch(e){ console.error('Could not remember token', e); }
     root.innerHTML = '';
     loadAll();
-  };
-  root.querySelector('.confirm').onclick = submit;
-  input.onkeydown = (e)=>{ if(e.key==='Enter') submit(); };
-  setTimeout(()=>input.focus(),50);
-}
-
-function askPin(onOk){
-  const root = document.getElementById('modalRoot');
-  root.innerHTML = `
-    <div class="overlay">
-      <div class="modal">
-        <h3>🔒 Parent PIN</h3>
-        <input type="password" inputmode="numeric" id="pinInput" placeholder="Enter PIN" autofocus>
-        <div class="err" id="pinErr"></div>
-        <div class="row">
-          <button class="cancel">Cancel</button>
-          <button class="confirm">Continue</button>
-        </div>
-      </div>
-    </div>`;
-  const overlay = root.querySelector('.overlay');
-  const input = root.querySelector('#pinInput');
-  const err = root.querySelector('#pinErr');
-  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
-  overlay.onclick = (e)=>{ if(e.target===overlay) root.innerHTML=''; };
-  const submit = ()=>{
-    if(input.value === String(settings.pin)){ root.innerHTML=''; onOk(); }
-    else { err.textContent = 'Incorrect PIN.'; input.value=''; input.focus(); }
   };
   root.querySelector('.confirm').onclick = submit;
   input.onkeydown = (e)=>{ if(e.key==='Enter') submit(); };
@@ -585,6 +548,49 @@ function showSpendModal(){
     if(isNaN(amt) || amt <= 0){ err.textContent = 'Enter an amount greater than 0.'; return; }
     root.innerHTML='';
     await applyTxn(kid, [{account:acct, amount:-amt}], 'spend', memo||'Spend');
+  };
+}
+
+function showTransferModal(){
+  const kid = activeKid;
+  const bal = state[kid].balances;
+  const root = document.getElementById('modalRoot');
+  const opts = (sel)=> ACCOUNTS.map(a=>`<option value="${a}"${a===sel?' selected':''}>${ACCT_LABEL[a]} — ${fmt(bal[a])}</option>`).join('');
+  root.innerHTML = `
+    <div class="overlay"><div class="modal">
+      <h3>🔄 Transfer — ${kidName(kid)}</h3>
+      <label>From</label>
+      <select id="trFrom">${opts('goal')}</select>
+      <label>To</label>
+      <select id="trTo">${opts('spend')}</select>
+      <label>Amount</label>
+      <input type="number" step="0.01" id="trAmt" placeholder="0.00">
+      <label>Memo (optional)</label>
+      <input type="text" id="trMemo" placeholder="e.g. Saving up for bike">
+      <p class="hint">Total savings don't change — the money just moves between accounts.</p>
+      <div class="err" id="trErr"></div>
+      <div class="row">
+        <button class="cancel">Cancel</button>
+        <button class="confirm">Transfer</button>
+      </div>
+    </div></div>`;
+  root.querySelector('.cancel').onclick = ()=> root.innerHTML='';
+  root.querySelector('.overlay').onclick = (e)=>{ if(e.target===e.currentTarget) root.innerHTML=''; };
+  root.querySelector('.confirm').onclick = async ()=>{
+    const amt = parseFloat(root.querySelector('#trAmt').value);
+    const from = root.querySelector('#trFrom').value;
+    const to = root.querySelector('#trTo').value;
+    const memo = root.querySelector('#trMemo').value.trim();
+    const err = root.querySelector('#trErr');
+    if(isNaN(amt) || amt <= 0){ err.textContent = 'Enter an amount greater than 0.'; return; }
+    if(from === to){ err.textContent = 'Pick two different accounts.'; return; }
+    root.innerHTML='';
+    const label = memo || ('Transfer to '+ACCT_LABEL[to]);
+    await applyTxn(kid, [
+      {account:from, amount:-amt},
+      {account:to, amount:amt}
+    ], 'transfer', label,
+      'Transfer '+fmt(amt)+' '+ACCT_LABEL[from]+' -> '+ACCT_LABEL[to]);
   };
 }
 
@@ -728,11 +734,12 @@ function showExportModal(){
   };
 }
 
-document.getElementById('btnAllowance').onclick = ()=> { if(activeKid) askPin(showAllowanceModal); };
-document.getElementById('btnDeposit').onclick = ()=> { if(activeKid) askPin(showDepositModal); };
-document.getElementById('btnSpend').onclick = ()=> { if(activeKid) askPin(showSpendModal); };
-document.getElementById('btnEditAllowance').onclick = ()=> { if(activeKid) askPin(showEditAllowanceModal); };
-document.getElementById('btnRestore').onclick = ()=> { if(activeKid) askPin(showRestoreModal); };
+document.getElementById('btnAllowance').onclick = ()=> { if(activeKid) showAllowanceModal(); };
+document.getElementById('btnDeposit').onclick = ()=> { if(activeKid) showDepositModal(); };
+document.getElementById('btnSpend').onclick = ()=> { if(activeKid) showSpendModal(); };
+document.getElementById('btnTransfer').onclick = ()=> { if(activeKid) showTransferModal(); };
+document.getElementById('btnEditAllowance').onclick = ()=> { if(activeKid) showEditAllowanceModal(); };
+document.getElementById('btnRestore').onclick = ()=> { if(activeKid) showRestoreModal(); };
 document.getElementById('btnExport').onclick = ()=> { if(settings) showExportModal(); };
 document.getElementById('btnDisconnect').onclick = ()=>{
   try{ localStorage.removeItem(TOKEN_KEY); }catch(e){}
