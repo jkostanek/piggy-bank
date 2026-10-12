@@ -108,7 +108,27 @@
   button.act.secondary{background:#fff;color:var(--ink);box-shadow:0 2px 0 var(--card-line);}
   button.act:active{transform:translateY(2px);box-shadow:none;}
 
-  .ledger h2{font-family:'Baloo 2',sans-serif;font-size:18px;margin:0 0 10px;font-weight:700;color:var(--ink);}
+  .acct{cursor:pointer;}
+  .acct.sel{outline:2.5px solid currentColor;outline-offset:1px;}
+  .acct.dim{opacity:.45;}
+
+  .histhead{display:flex;align-items:center;justify-content:space-between;margin:0 0 10px;}
+  .ledger h2{font-family:'Baloo 2',sans-serif;font-size:18px;margin:0;font-weight:700;color:var(--ink);}
+  .seg{display:flex;background:#fff;border-radius:11px;box-shadow:0 2px 0 var(--card-line);overflow:hidden;}
+  .seg button{
+    border:none;background:none;padding:7px 14px;cursor:pointer;
+    font-family:'Baloo 2',sans-serif;font-size:13.5px;font-weight:700;color:var(--ink-soft);
+  }
+  .seg button.on{background:var(--ink);color:var(--paper);}
+
+  .chart{padding:12px 6px 4px;}
+  .chart svg{display:block;width:100%;height:auto;}
+  .chart .legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;padding:4px 6px 8px;font-size:12px;font-weight:800;}
+  .chart .legend span.sw{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;}
+  .chart .legend div{display:flex;align-items:center;}
+  .chart .axis{font-size:10px;font-weight:700;fill:var(--ink-soft);font-family:'Nunito',sans-serif;}
+  .chart .grid{stroke:var(--line);stroke-width:1;}
+  .chart .zero{stroke:var(--ink-soft);stroke-width:1;stroke-dasharray:3 3;}
   .ledger-card{background:#fff;border-radius:var(--card-radius);padding:6px 4px;box-shadow:0 2px 0 rgba(0,0,0,0.04);overflow:hidden;}
   table{width:100%;border-collapse:collapse;font-size:13.5px;}
   th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);border-bottom:2px solid var(--line);padding:10px 10px 8px;font-weight:800;}
@@ -179,9 +199,16 @@
   </div>
 
   <div class="ledger">
-    <h2>History</h2>
+    <div class="histhead">
+      <h2>History</h2>
+      <div class="seg" id="viewToggle">
+        <button data-view="list">List</button>
+        <button data-view="graph">Graph</button>
+      </div>
+    </div>
     <div class="ledger-card">
-      <table>
+      <div id="chartWrap" style="display:none;"></div>
+      <table id="ledgerTable">
         <thead><tr><th>Date</th><th>What</th><th>Account</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead>
         <tbody id="ledgerBody"></tbody>
       </table>
@@ -208,6 +235,9 @@ let state = {};
 let shas = {};
 let activeKid = null;
 let busy = false;
+let view = 'list';
+try{ view = localStorage.getItem('piggy:view') || 'list'; }catch(e){}
+let selAccount = null;   // null = all three
 
 function fmt(n){
   const sign = n < 0 ? '-' : '';
@@ -324,6 +354,60 @@ async function applyTxn(kid, entries, type, memo, summary){
   await save(kid, next, summary || ((memo||type) + ' ' + (total<0?'-':'+') + fmt(Math.abs(total)) + where));
 }
 
+// ---- balance-over-time chart ----
+function niceStep(raw){
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  return [1,2,2.5,5,10].find(m => m*mag >= raw) * mag;
+}
+function chartSvg(kidState, accts){
+  const txns = kidState.transactions;
+  if(!txns.length) return '<div class="empty">No transactions yet.</div>';
+  const W=760, H=300, L=48, R=14, T=14, B=28;
+  const t0 = new Date(txns[0].date).getTime();
+  const t1 = Math.max(Date.now(), new Date(txns[txns.length-1].date).getTime());
+  const series = accts.map(a=>{
+    const pts = [{t:t0, v:0}];
+    txns.forEach(x=>{ if(x.account===a) pts.push({t:new Date(x.date).getTime(), v:x.balanceAfter}); });
+    pts.push({t:t1, v:kidState.balances[a]});
+    return {a, pts};
+  });
+  let min=0, max=0;
+  series.forEach(s=> s.pts.forEach(p=>{ if(p.v<min) min=p.v; if(p.v>max) max=p.v; }));
+  const span = (max-min) || 10;
+  const step = niceStep(span/6);
+  const lo = min - span*0.06, hi = max + span*0.06;
+  const x = t => L + (t-t0)/((t1-t0)||1) * (W-L-R);
+  const y = v => T + (hi-v)/((hi-lo)||1) * (H-T-B);
+
+  let g = '';
+  for(let v=Math.ceil(lo/step)*step; v<=hi+1e-9; v+=step){
+    const rv = round2(v);
+    const lbl = (rv<0?'-':'') + '$' + (Math.abs(rv)%1 ? Math.abs(rv).toFixed(2) : Math.abs(rv));
+    g += `<line class="grid" x1="${L}" y1="${y(v).toFixed(1)}" x2="${W-R}" y2="${y(v).toFixed(1)}"/>`
+       + `<text class="axis" x="${L-6}" y="${(y(v)+3.5).toFixed(1)}" text-anchor="end">${lbl}</text>`;
+  }
+  if(lo < 0 && hi > 0) g += `<line class="zero" x1="${L}" y1="${y(0).toFixed(1)}" x2="${W-R}" y2="${y(0).toFixed(1)}"/>`;
+  for(let i=0;i<=4;i++){
+    const t = t0 + (t1-t0)*i/4;
+    const lbl = new Date(t).toLocaleDateString(undefined,{month:'short',year:'2-digit'});
+    const anchor = i===0 ? 'start' : (i===4 ? 'end' : 'middle');
+    g += `<text class="axis" x="${x(t).toFixed(1)}" y="${H-8}" text-anchor="${anchor}">${lbl}</text>`;
+  }
+  // stepped line: a balance holds until the next transaction
+  series.forEach(s=>{
+    let d = `M${x(s.pts[0].t).toFixed(1)} ${y(s.pts[0].v).toFixed(1)}`;
+    for(let i=1;i<s.pts.length;i++){
+      d += `H${x(s.pts[i].t).toFixed(1)}V${y(s.pts[i].v).toFixed(1)}`;
+    }
+    g += `<path d="${d}" fill="none" stroke="var(--${s.a})" stroke-width="2" stroke-linejoin="round"/>`;
+  });
+  const legend = series.map(s=>
+    `<div style="color:var(--${s.a}-deep)"><span class="sw" style="background:var(--${s.a})"></span>${ACCT_LABEL[s.a]} ${fmt(kidState.balances[s.a])}</div>`
+  ).join('');
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Balance over time">${g}</svg>`
+       + `<div class="legend">${legend}</div></div>`;
+}
+
 // ---- render ----
 function render(){
   document.getElementById('today').textContent = new Date().toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
@@ -353,6 +437,8 @@ function render(){
     const c = document.getElementById('btnConnect');
     if(c) c.onclick = ()=> showConnectModal();
     document.getElementById('ledgerBody').innerHTML = '';
+    document.getElementById('chartWrap').style.display = 'none';
+    document.getElementById('ledgerTable').style.display = '';
     document.getElementById('emptyState').style.display = 'block';
     document.getElementById('emptyState').textContent = settings ? 'Pick a kid to see their history.' : '';
     actionButtons.forEach(b=> { b.disabled = true; b.style.opacity = '0.5'; });
@@ -366,16 +452,36 @@ function render(){
   ACCOUNTS.forEach(a=>{
     const val = kidState.balances[a];
     const div = document.createElement('div');
-    div.className = 'acct ' + a;
+    div.className = 'acct ' + a + (selAccount===a ? ' sel' : (selAccount ? ' dim' : ''));
     div.innerHTML = `<span class="icon">${ACCT_ICON[a]}</span><div class="label">${ACCT_LABEL[a]}</div><div class="amt${val<0?' neg':''}">${fmt(val)}</div>`;
+    div.onclick = ()=>{ selAccount = (selAccount===a ? null : a); render(); };
     accWrap.appendChild(div);
   });
 
+  document.querySelectorAll('#viewToggle button').forEach(b=>{
+    b.className = b.dataset.view===view ? 'on' : '';
+  });
+
+  const chartWrap = document.getElementById('chartWrap');
+  const table = document.getElementById('ledgerTable');
+  if(view === 'graph'){
+    chartWrap.style.display = '';
+    chartWrap.innerHTML = chartSvg(kidState, selAccount ? [selAccount] : ACCOUNTS);
+    table.style.display = 'none';
+    document.getElementById('ledgerBody').innerHTML = '';
+    document.getElementById('emptyState').style.display = 'none';
+    return;
+  }
+  chartWrap.style.display = 'none';
+  chartWrap.innerHTML = '';
+  table.style.display = '';
+
   const body = document.getElementById('ledgerBody');
   body.innerHTML = '';
-  const txns = [...kidState.transactions].reverse();
+  const txns = [...kidState.transactions].reverse().filter(t=> !selAccount || t.account===selAccount);
   document.getElementById('emptyState').style.display = txns.length? 'none':'block';
-  document.getElementById('emptyState').textContent = 'No transactions yet.';
+  document.getElementById('emptyState').textContent = kidState.transactions.length
+    ? 'Nothing in '+ACCT_LABEL[selAccount]+' yet.' : 'No transactions yet.';
   txns.forEach(t=>{
     const tr = document.createElement('tr');
     const d = new Date(t.date).toLocaleDateString(undefined,{month:'short',day:'numeric'});
@@ -741,6 +847,13 @@ document.getElementById('btnTransfer').onclick = ()=> { if(activeKid) showTransf
 document.getElementById('btnEditAllowance').onclick = ()=> { if(activeKid) showEditAllowanceModal(); };
 document.getElementById('btnRestore').onclick = ()=> { if(activeKid) showRestoreModal(); };
 document.getElementById('btnExport').onclick = ()=> { if(settings) showExportModal(); };
+document.querySelectorAll('#viewToggle button').forEach(b=>{
+  b.onclick = ()=>{
+    view = b.dataset.view;
+    try{ localStorage.setItem('piggy:view', view); }catch(e){}
+    render();
+  };
+});
 document.getElementById('btnDisconnect').onclick = ()=>{
   try{ localStorage.removeItem(TOKEN_KEY); }catch(e){}
   token = null; settings = null; state = {}; shas = {}; activeKid = null;
